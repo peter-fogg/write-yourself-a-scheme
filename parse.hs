@@ -77,15 +77,40 @@ parseFloat = do x <- parseFloatingString
                   where getValue ((x, y):xs) = x
 
 parseComplex :: Parser LispVal
-parseComplex = do real <- choice [try parseFloatingString, many1 digit]
+parseComplex = do real <- choice [try parseFloatingString, many digit]
                   char '+'
                   imaginary <- choice [try parseFloatingString, many1 digit]
                   char 'i'
                   return $ Complex (getValue (readFloat real)) (getValue (readFloat imaginary))
                     where getValue ((x, y):xs) = x
 
+parseList :: Parser LispVal
+parseList = liftM List $ sepBy parseExpr spaces
+
+parseDottedList :: Parser LispVal
+parseDottedList = do
+  head <- endBy parseExpr spaces
+  tail <- char '.' >> spaces >> parseExpr
+  return $ DottedList head tail
+
+parseQuoted :: Parser LispVal
+parseQuoted = do
+  char '\''
+  x <- parseExpr
+  return $ List [Atom "quote", x]
+
 parseExpr :: Parser LispVal
-parseExpr = (try parseComplex) <|> (try parseFloat) <|> parseNumber <|> parseAtom <|> parseString <|> parseCharacter
+parseExpr = do char '('
+               x <- try parseDottedList <|> parseList
+               char ')'
+               return x
+            <|> try parseAtom
+            <|> try parseString
+            <|> try parseCharacter
+            <|> try parseComplex
+            <|> try parseFloat
+            <|> try parseNumber
+            <|> parseQuoted
                
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
