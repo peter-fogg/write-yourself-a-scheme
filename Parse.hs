@@ -1,3 +1,10 @@
+-- module Parse
+--        ( LispVal
+--        , String
+--        , parseExpr
+--        , readExpr
+--        ) where
+
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
 import Control.Monad
@@ -12,7 +19,103 @@ data LispVal = Atom String
              | String String
              | Character Char
              | Bool Bool
-               deriving Show
+
+showVal :: LispVal -> String
+showVal (String contents) = "\"" ++ contents ++ "\""
+showVal (Atom name) = name
+showVal (Number value) = show value
+showVal (Float value) = show value
+showVal (Complex real imaginary) = (show real) ++ "+" ++ (show imaginary) ++ "i"
+showVal (Character char) = "'" ++ show char ++ "'"
+showVal (Bool True) = "#t"
+showVal (Bool False) = "#f"
+showVal (List contents) = "(" ++ unwordsList contents ++ ")"
+showVal (DottedList head tail) = "(" ++ unwordsList head ++ " . " ++ showVal tail ++ ")"
+
+instance Show LispVal where show = showVal
+
+unwordsList :: [LispVal] -> String
+unwordsList = unwords . map showVal
+
+eval :: LispVal -> LispVal
+eval val@(String _) = val
+eval val@(Character _) = val
+eval val@(Bool _) = val
+eval val@(Number _) = val
+eval val@(Float _) = val
+eval val@(Complex _ _) = val
+eval val@(Atom _) = val
+eval (List [Atom "quote", val]) = val
+eval (List (Atom func : args)) = apply func $ map eval args
+
+apply :: String -> [LispVal] -> LispVal
+apply func args = maybe (Bool False) ($ args) $ lookup func primitives
+
+numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> LispVal
+numericBinop op params = Number $ foldl1 op $ map unpackNum params
+
+unpackNum :: LispVal -> Integer
+unpackNum (Number n) = n
+unpackNum _ = 0
+
+isNumber :: [LispVal] -> LispVal
+isNumber [(Number _)] = Bool True
+isNumber _ = Bool False
+
+isBool :: [LispVal] -> LispVal
+isBool [(Bool _)] = Bool True
+isBool _ = Bool False
+
+isString :: [LispVal] -> LispVal
+isString [(String _)] = Bool True
+isString _ = Bool False
+
+isAtom :: [LispVal] -> LispVal
+isAtom [(Atom _)] = Bool True
+isAtom _ = Bool False
+
+isCharacter :: [LispVal] -> LispVal
+isCharacter [(Character _)] = Bool True
+isCharacter _ = Bool False
+
+isComplex :: [LispVal] -> LispVal
+isComplex [(Complex _ _)] = Bool True
+isComplex _ = Bool False
+
+isFloat :: [LispVal] -> LispVal
+isFloat [(Float _)] = Bool True
+isFloat _ = Bool False
+
+isList :: [LispVal] -> LispVal
+isList [(List _)] = Bool True
+isList _ = Bool False
+
+symbolToString :: [LispVal] -> LispVal
+symbolToString [(Atom val)] = String val
+symbolToString _ = Bool False
+
+stringToSymbol :: [LispVal] -> LispVal
+stringToSymbol [(String contents)] = Atom contents
+stringToSymbol _ = Bool False
+
+primitives :: [(String, [LispVal] -> LispVal)]
+primitives = [("+", numericBinop (+)),
+              ("-", numericBinop (-)),
+              ("*", numericBinop (*)),
+              ("/", numericBinop div),
+              ("mod", numericBinop mod),
+              ("quotient", numericBinop quot),
+              ("remainder", numericBinop rem),
+              ("bool?", isBool),
+              ("atom?", isAtom),
+              ("string?", isString),
+              ("character?", isCharacter),
+              ("complex?", isComplex),
+              ("float?", isFloat),
+              ("list?", isList),
+              ("number?", isNumber),
+              ("string->symbol", stringToSymbol),
+              ("symbol->string", symbolToString)]
 
 parseEscape :: Parser Char
 parseEscape = char '\\' >> choice (zipWith escapedChar codes replacements)
@@ -100,30 +203,30 @@ parseQuoted = do
   return $ List [Atom "quote", x]
 
 parseExpr :: Parser LispVal
-parseExpr = do char '('
-               x <- try parseDottedList <|> parseList
-               char ')'
-               return x
+parseExpr = try parseQuoted
+            <|> do char '('
+                   x <- try parseDottedList <|> parseList
+                   char ')'
+                   return x
             <|> try parseAtom
             <|> try parseString
             <|> try parseCharacter
             <|> try parseComplex
             <|> try parseFloat
             <|> try parseNumber
-            <|> parseQuoted
+            
                
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
          
-readExpr :: String -> String
+readExpr :: String -> LispVal
 readExpr input = case parse parseExpr "lisp" input of
-  Left err -> "No match: " ++ show err
-  Right val -> "Found value " ++ show val
+  Left err -> String $ "No match: " ++ show err
+  Right val -> val
 
 spaces :: Parser ()
 spaces = skipMany1 space
 
 main :: IO ()
 main = do
-  args <- getArgs
-  putStrLn $ readExpr $ args !! 0
+  getArgs >>= print . eval . readExpr . head
