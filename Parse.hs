@@ -209,6 +209,28 @@ stringToSymbol :: [LispVal] -> ThrowsError LispVal
 stringToSymbol [(String contents)] = return $ Atom contents
 stringToSymbol [bad] = throwError $ TypeMismatch (show bad) bad
 
+stringLength :: [LispVal] -> ThrowsError LispVal
+stringLength [(String contents)] = return $ Number $ fromIntegral $ length contents
+stringLength [bad] = throwError $ TypeMismatch (show bad) bad
+stringLength bad = throwError $ NumArgs 1 bad
+
+stringRef :: [LispVal] -> ThrowsError LispVal
+stringRef [(String contents), (Number val)] = return $ String $ [contents !! (fromIntegral val)]
+stringRef [bad, bad2] = throwError $ TypeMismatch (show bad) bad
+stringRef bad = throwError $ NumArgs 2 bad
+
+substring :: [LispVal] -> ThrowsError LispVal
+substring [(String contents), (Number start), (Number end)] = let intStart = fromIntegral start
+                                                                  intEnd = fromIntegral end
+                                                              in return $ String $ take (intEnd - intStart) . drop intStart $ contents
+substring bad@[_, _, _] = throwError $ TypeMismatch (foldl (\acc x -> acc ++ ", " ++  (show x)) "" bad) $ bad !! 0
+substring bad = throwError $ NumArgs 3 bad
+
+stringAppend :: [LispVal] -> ThrowsError LispVal
+stringAppend [(String first), (String second)] = return $ String $ first ++ second
+stringAppend bad@[_, _] = throwError $ TypeMismatch (foldl (\acc x -> acc ++ ", " ++ (show x)) "" bad) $ bad !! 0
+stringAppend bad = throwError $ NumArgs 2 bad
+
 primitives :: [(String, [LispVal] -> ThrowsError LispVal)]
 primitives = [("+", numericBinop (+)),
               ("-", numericBinop (-)),
@@ -226,6 +248,10 @@ primitives = [("+", numericBinop (+)),
               ("number?", isNumber),
               ("string->symbol", stringToSymbol),
               ("symbol->string", symbolToString),
+              ("string-length", stringLength),
+              ("string-ref", stringRef),
+              ("substring", substring),
+              ("string-append", stringAppend),
               ("=", numBoolBinop (==)),
               ("<", numBoolBinop (<)),
               (">", numBoolBinop (>)),
