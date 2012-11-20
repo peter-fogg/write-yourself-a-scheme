@@ -1,9 +1,5 @@
--- module Parse
---        ( LispVal
---        , String
---        , parseExpr
---        , readExpr
---        ) where
+module Parse
+       where
 
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
@@ -76,17 +72,37 @@ eval val@(Float _) = return val
 eval val@(Complex _ _) = return val
 eval val@(Atom _) = return val
 eval (List [Atom "quote", val]) = return val
+eval (List [Atom "quasiquote", val]) = evalQuasiQuoted val
 eval (List (Atom func : args)) = mapM eval args >>= apply func
 eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
+evalQuasiQuoted :: LispVal -> ThrowsError LispVal
+evalQuasiQuoted (List [Atom "unquote", val]) = eval val
+evalQuasiQuoted val = return val
+
 apply :: String -> [LispVal] -> ThrowsError LispVal
-apply func args = maybe (throwError $ NotFunction "Uncrecognized primitive function args" func)
+apply func args = maybe (throwError $ NotFunction "Unrecognized primitive function args" func)
                   ($ args)
                   (lookup func primitives)
 
 numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> ThrowsError LispVal
 numericBinop op singleVal@[_] = throwError $ NumArgs 2 singleVal
-numericBinop op params = mapM unpackNum params >>= return. Number . foldl1 op
+numericBinop op params = mapM unpackNum params >>= return . Number . foldl1 op
+-- numericBinop op params = foldM (liftOp op) (getBaseCase op) params
+--   where getBaseCase (+) = Number 0
+--         getBaseCase (-) = Number 0
+--         getBaseCase (*) = Number 1
+--         getBaseCase (/) = Number 1
+--  where resultType val@(Double _) = Float val
+--        resultType val@(Number _) = 
+
+--liftOp :: Num a => (a -> a -> a) -> LispVal -> LispVal -> ThrowsError LispVal
+liftOp :: (Integer -> Integer -> Integer) -> LispVal -> LispVal -> ThrowsError LispVal
+liftOp op (Number l) (Number r) = return . Number $ op l r
+--liftOp op (Float l) (Number r) = return . Float $ op l (fromIntegral r)
+--liftOp op (Number l) (Float r) = return . Float $ op l r
+--liftOp op (Float l) (Float r) = return . Float $ op l r
+liftOp _ badl badr  = throwError $ TypeMismatch ((show badl) ++ (show badr)) badl
 
 unpackNum :: LispVal -> ThrowsError Integer
 unpackNum (Number n) = return n
@@ -241,8 +257,22 @@ parseQuoted = do
   x <- parseExpr
   return $ List [Atom "quote", x]
 
+parseQuasiQuoted :: Parser LispVal
+parseQuasiQuoted = do
+  char '`'
+  x <- parseExpr
+  return $ List [Atom "quasiquote", x]
+
+parseUnquoted :: Parser LispVal
+parseUnquoted = do
+  char ','
+  x <- parseExpr
+  return $ List [Atom "unquote", x]
+
 parseExpr :: Parser LispVal
 parseExpr = try parseQuoted
+            <|> parseQuasiQuoted
+            <|> parseUnquoted
             <|> do char '('
                    x <- try parseDottedList <|> parseList
                    char ')'
@@ -266,8 +296,8 @@ readExpr input = case parse parseExpr "lisp" input of
 spaces :: Parser ()
 spaces = skipMany1 space
 
-main :: IO ()
-main = do
-  args <- getArgs
-  evaled <- return $ liftM show $ readExpr (args !! 0) >>= eval
-  putStrLn $ extractValue $ trapError evaled
+-- main :: IO ()
+-- main = do
+--   args <- getArgs
+--   evaled <- return $ liftM show $ readExpr (args !! 0) >>= eval
+--   putStrLn $ extractValue $ trapError evaled
