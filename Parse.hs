@@ -2,6 +2,7 @@ module Parse
        where
 
 import Text.ParserCombinators.Parsec hiding (spaces)
+import System.IO
 import System.Environment
 import Control.Monad
 import Control.Monad.Error
@@ -19,7 +20,7 @@ showError :: LispError -> String
 showError (UnboundVar message varname) = message ++ ": " ++ varname
 showError (BadSpecialForm message form) = message ++ ": " ++ show form
 showError (NotFunction message func) = message ++ ": " ++ show func
-showError (NumArgs expected found) = "Expected " ++ show expected ++ "args; found values " ++ unwordsList found
+showError (NumArgs expected found) = "Expected " ++ show expected ++ " args; found values " ++ unwordsList found
 showError (Parser parseErr) = "Parse error at " ++ show parseErr
 showError (TypeMismatch expected found) = "Expected " ++ show expected ++ ", found " ++ show found
 
@@ -67,7 +68,7 @@ eval val@(Bool _) = return val
 eval val@(Number _) = return val
 eval val@(Float _) = return val
 eval val@(Complex _ _) = return val
-eval val@(Atom _) = return val
+--eval val@(Atom _) = return val
 eval (List [Atom "quote", val]) = return val
 eval (List [Atom "quasiquote", val]) = evalQuasiQuoted val
 eval (List [Atom "if", pred, conseq, alt]) = -- because sometimes weak typing is chill
@@ -388,6 +389,27 @@ readExpr input = case parse parseExpr "lisp" input of
 spaces :: Parser ()
 spaces = skipMany1 space
 
+flushStr :: String -> IO ()
+flushStr str = putStr str >> hFlush stdout
+
+readPrompt :: String -> IO String
+readPrompt prompt = flushStr prompt >> getLine
+
+evalString :: String -> IO String
+evalString expr = return $ extractValue $ trapError (liftM show $ readExpr expr >>= eval)
+
+evalAndPrint :: String -> IO ()
+evalAndPrint expr = evalString expr >>= putStrLn
+
+until_ :: Monad m => (a -> Bool) -> m a -> (a -> m ()) -> m ()
+until_ pred prompt action = do
+  result <- prompt
+  if pred result
+    then return ()
+    else action result >> until_ pred prompt action
+
+runRepl :: IO ()
+runRepl = until_ (== "quit") (readPrompt "Lisp > ") evalAndPrint
 -- main :: IO ()
 -- main = do
 --   args <- getArgs

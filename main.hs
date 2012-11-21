@@ -6,8 +6,10 @@ import Parse
 main :: IO ()
 main = do
   args <- getArgs
-  evaled <- return $ liftM show $ readExpr (args !! 0) >>= eval
-  putStrLn $ extractValue $ trapError evaled
+  case length args of
+    0 -> runRepl
+    1 -> evalAndPrint $ args !! 1
+    otherwise -> putStrLn "Foo!"
 -- main :: IO ()
 -- main = do
 --   putStrLn "Your name?"
