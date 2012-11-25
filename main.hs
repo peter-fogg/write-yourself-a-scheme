@@ -8,7 +8,7 @@ main = do
   args <- getArgs
   case length args of
     0 -> runRepl
-    1 -> evalAndPrint $ args !! 1
+    1 -> runOne $ args !! 1
     otherwise -> putStrLn "Foo!"
 -- main :: IO ()
 -- main = do
